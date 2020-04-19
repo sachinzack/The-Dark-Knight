@@ -1,0 +1,62 @@
+git config --global user.name "lastname, Firstname"
+
+git config --global user.email "email ID"
+
+git --list
+
+git init "To initialize a folder to git repository"
+
+rm -rf .git "Removes GIT from that working directory"
+
+git remote add origin "https://github.com/sachinzack/The-Dark-Knight.git"
+
+later
+
+Setup Notepad++ path in env variable path
+
+alias npp='notepad++.exe --multilnst --nosession'
+
+
+git config --global core.editor "\"C:\Program Files\Notepad++\notepad++.exe\""
+
+
+git status "shows current status of the files"
+
+git add . "Adds the files to staging area"
+
+git commit -m "adds the data to the repository"
+
+git diff "show the difference made for which file"
+
+git diff --staged "shows data diff in staged area"
+
+git log "Verify the changes being made"
+
+git rm "remoove file"
+
+git pull origin master "Pulls data from GITHUB cloud"
+
+git push origin master "Pushes data from GITHUB cloud"
+
+git branch "finds out the number of branches in the repository"
+
+git branch <branch name> "Creates a pointer to mster files"
+
+git checkout <branch name> "Enters you into that Branch Name"
+
+git merge <branch name> "stay on master andd then run the cmd for branch to merge with master and run git push origin master"
+
+git reset HEAD <Filename> "Undo the files from STAGING area back to WORKING DIR"
+
+git reset HEAD~ "Undo changes which is been recently commited"
+
+git clone "Fork someone and the download their work to your working directory https://github.com/sachinzack/remove-sccm.git"
+
+
+touch <Filename> "Will creat the file in the working DIR"
+
+echo "Any Text or code" > Filename "Will add the info inside the file"
+
+git rm Filename "Deletes the files"'
+
+git reset HEAD <Filename> and then do git checkout -- Filename "Restores file back to its location"
