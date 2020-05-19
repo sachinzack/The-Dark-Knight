@@ -1,1 +1,0 @@
-SFTP script for users
