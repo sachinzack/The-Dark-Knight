@@ -1,0 +1,238 @@
+﻿##############################################################
+# 
+############################################################# 
+Import-Module -Name WinSCP
+
+# Date Variables
+$arc_date = (Get-Date).ToString("yyyyMMdd")
+$logdate = (Get-Date).ToString("MM-dd-yyyy HH:MM:ss")
+
+#Processes needed
+#0 is false 
+#1 is positive 
+#If a processes is needed make the variable equal to 1  
+$decryptfiles = 1
+$archivefiles = 0
+
+# Folders variables
+$ftp = "C:\Users\Cindy Burnett\Stonehawk Capital\Admin - Documents\Portfolio\PrimeBrokerProcessing\MS-Incoming"
+$working = "C:\Users\Cindy Burnett\Stonehawk Capital\Admin - Documents\Portfolio\PrimeBrokerProcessing\MS-Incoming\working"
+$archive = ""
+$LogFile = ("C:\Scripts\Logs\MSCO_SFTP_" + $arc_date + ".log")
+
+#Destination folder variables 
+#$pbdate = (Get-Date).ToString("yyyy-MM-dd")
+#$dailyfolder = "C:\Users\Cindy Burnett\Stonehawk Capital\Admin - Documents\Portfolio\PrimeBrokerProcessing\PB Daily Files\MSCO"
+#Test-Path -Path ($dailyfolder + "\" + $pbdate) 
+#$destinationfolder = ""
+$pbdate = $(Get-Date).ToString('yyyy-MM-dd')
+$dailyfolder = "C:\Users\Cindy Burnett\Stonehawk Capital\Admin - Documents\Portfolio\PrimeBrokerProcessing\PB Daily Files\MSCO\" + "$pbdate"
+if(!(Test-Path "$dailyfolder")) {New-item "$dailyfolder" -ItemType Directory -EA 0 } 
+$destinationfolder = "$dailyfolder"
+
+
+#WinSCP Variables - Connection
+$WinSCP_HostName = "sftp-wl.morganstanley.com"
+$WinSCP_Protocol = "SFTP"
+$WinSCP_sshHostKeyFingerprint = "ssh-ed25519 256 MAz0rLbrgxDQ6NZmoYxXzhnyHaAANozzDaxAqpV4rK8="
+$WinSCP_RemoteDir = "/download/*.*"
+
+
+#WinSCP Credentials
+$WinSCP_username = "eidlayga"
+$WinSCP_Password = "WHF8rvpPZgp+G27E"
+$PGPPassphrase = 'WHF8rvpPZgp+G27E'
+
+
+#----------------------
+#Functions to process files 
+
+#Check if Working Directory is empty
+function Check-PathItems {
+    [CmdletBinding()]
+    param ($filepath, $die = $true)
+     
+    $itemsInFoder = (Get-ChildItem $filepath).count     
+    $logdate = (Get-Date).ToString("MM-dd-yyyy HH:MM:ss")
+    Write-Output "$logdate : Check-PathItems: $itemsInFoder Items found in $filepath" | Out-File -FilePath $LogFile -Append
+	
+    if($itemsInFoder -gt 0){
+        if($die = $true){
+			Write-Output "$logdate : Exiting script at PathCheck items in folder" | Out-File -FilePath $LogFile -Append
+			Write-Output "$logdate : Verify if files processed and remove from $filepath" | Out-File -FilePath $LogFile -Append
+            exit 22
+        }
+    }
+}
+
+#Fuction for handling test-path
+function Test-Folder {
+ [CmdletBinding()]
+ param ($filepath)
+ $VarPathCheck = Test-Path -path $filepath
+ $logdate = (Get-Date).ToString("MM-dd-yyyy HH:MM:ss")
+ if ($VarPathCheck -eq $TRUE){
+        Write-Output "$logdate : The path is available: $filepath"
+    }
+    else{
+		Write-Output "$logdate : PathCheck: $filepath not available" | Out-File -FilePath $LogFile -Append
+        Write-Output "----------------------------------------" | Out-File -FilePath $LogFile -Append
+        Write-Output "$logdate : Exiting script!! Investigate if this directory exists" | Out-File -FilePath $LogFile -Append
+        Exit 222
+    }
+ }
+
+# WinSCP function to receive files
+function WinSCP_ReceiveItems {
+	[CmdletBinding()] 
+	param ($remote_path,$local_dest,$remove_files)
+	 $logdate = (Get-Date).ToString("MM-dd-yyyy HH:MM:ss")
+	if ($WinSCP_Session.Opened -eq $TRUE) {
+		if ($remove_files -eq "-Remove"){
+			
+			Write-Output "$logdate : WinSCP_ReceiveItems Removing Items" | Out-File -FilePath $LogFile -Append
+			Write-Output "Remote Path: $remote_path"
+			Write-Output "Destination Folder: $local_dest" | Out-File -FilePath $LogFile -Append
+			# Get Files
+			$receiveInfo = Receive-WinSCPItem -WinSCPSession $WinSCP_Session -Path $remote_path -Destination $local_dest -Remove 
+            $logdate = (Get-Date).ToString("MM-dd-yyyy HH:MM:ss")
+            Write-Output "$logdate : Connection Success: $receiveInfo.IsSuccess" | Out-File -FilePath $LogFile -Append
+            $receiveInfo.Transfers | select Destination,FileName | fl | Out-File -FilePath $LogFile -Append
+            Write-Output "----------------------------------------" | Out-File -FilePath $LogFile -Append
+		}
+		else{
+							
+			Write-Output "$logdate : WinSCP_ReceiveItems Not Removing Items" | Out-File -FilePath $LogFile -Append
+			Write-Output "Remote Path: $remote_path" | Out-File -FilePath $LogFile -Append
+			Write-Output "Destination Folder: $local_dest" | Out-File -FilePath $LogFile -Append
+			# Get Files
+			$receiveInfo = Receive-WinSCPItem -WinSCPSession $WinSCP_Session -Path $remote_path -Destination $local_dest
+            $logdate = (Get-Date).ToString("MM-dd-yyyy HH:MM:ss")			
+            Write-Output "$logdate : Connection Success: $receiveInfo.IsSuccess" | Out-File -FilePath $LogFile -Append
+			# List Transferred Files
+			$receiveInfo.Transfers | select Destination,FileName | fl
+            Write-Output "----------------------------------------" | Out-File -FilePath $LogFile -Append
+		}
+	}
+	else {
+
+		Write-Output "----------------------------------------" | Out-File -FilePath $LogFile -Append
+		Write-Output "WinSCP session NOT opened. Investigate!" | Out-File -FilePath $LogFile -Append
+		Write-Output "Exiting script at ReceiveItems step." | Out-File -FilePath $LogFile -Append
+		Write-Output "----------------------------------------" | Out-File -FilePath $LogFile -Append
+        Write-Output "$logdate : WinSCP_ReceiveItems: WinSCP session NOT opened." | Out-File -FilePath $LogFile -Append
+		Exit 1 
+	}
+ }
+
+# Pull files from vendor
+function Get-Files {
+    #Load WinSCP .NET Assembly
+    Add-Type -Path "C:\Program Files (x86)\WinSCP\WinSCPnet.dll"
+	$logdate = (Get-Date).ToString("MM-dd-yyyy HH:MM:ss")
+    $secureStringPwd = $WinSCP_Password | ConvertTo-SecureString -AsPlainText -Force
+    $credential = New-Object System.Management.Automation.PSCredential -ArgumentList $WinSCP_username, $secureStringPwd
+
+    $sessionOption  = New-WinSCPSessionOption -HostName $WinSCP_HostName -SshHostKeyFingerprint $WinSCP_sshHostKeyFingerprint -Credential $credential
+    $WinSCP_Session = New-WinSCPSession -SessionOption $sessionOption
+
+    if ($WinSCP_Session.Opened -eq $TRUE){
+
+	    Write-Output "$logdate : WinSCP session successfully opened" | Out-File -FilePath $LogFile -Append
+
+    }
+    else{
+	
+	    Write-Output "$logdate : WinSCP session NOT opened for: $WinSCP_HostName. Investigate!" | Out-File -FilePath $LogFile -Append
+        
+	    Exit 1
+    } 
+
+    WinSCP_ReceiveItems -remote_path "$WinSCP_RemoteDir" -local_dest $ftp #-remove_files "-Remove"
+
+    Remove-WinSCPSession -WinSCPSession $WinSCP_Session
+}
+
+# New Decrypt_GPG Function Decrypt
+function Decrypt_GPG {
+[CmdletBinding()]
+    param ($filepath) 
+    gpg --pinentry-mode loopback -d --passphrase $PGPPassphrase --output $working\$($filepath.TrimEnd('.pgp')) --batch --yes $filepath 
+}
+
+# Archives FTP files
+Function Archive-FTPFiles {
+      
+    [cmdletbinding()]
+    Param ($workingFolder, $FileMask, $ArchiveFolder)
+  
+    $workingFiles = (Get-ChildItem "$workingFolder\$FileMask")
+ 
+    foreach($f in $workingFiles ){
+  
+        $date_archive = (Get-Date).ToString("MMddyyyy.hh.mm.ss.fffffff")
+        Copy-Item $f -Destination ($ArchiveFolder + "\" + $f.Name + "." + $date_archive) -Verbose 4>> $LogFile
+    }
+}
+
+#---------------
+#Starting the connection process below 
+
+Write-Output "####################### `n Starting script $logdate" | Out-File -FilePath $LogFile -Append
+
+Test-Path $ftp 
+Test-Path $working 
+Test-Path $destinationfolder
+Check-PathItems $working 
+
+set-location $ftp
+
+#File pull from vendor 
+Get-Files
+
+#--------------------------------------
+
+
+
+#File Processing 
+$checkforfiles = get-ChildItem -path $ftp | where {!$_.psiscontainer}
+If($checkforfiles.Length -gt 0){
+
+	Write-Output "`n--------- Moving Files to Working Dir ---------"
+	$checkforfiles | Move-Item -destination $working -verbose | Out-File -FilePath $LogFile -Append
+	
+	Set-Location $working
+	if ($archivefiles){
+	Write-Output "`n------- Archiving Files -------" | Out-File -FilePath $LogFile -Append
+	Archive-FTPFiles -workingFolder $working -FileMask "*.*" -ArchiveFolder $archive
+	}
+	
+	
+	if ($decryptfiles){
+	Write-Output "`n---------- Decrypting Files ----------" | Out-File -FilePath $LogFile -Append
+    $getFiles = get-ChildItem -path $Working\* -Include *.pgp, *.gpg
+	foreach($f in $getFiles){
+	$outfile = $f -replace ".pgp",""
+	gpg --pinentry-mode loopback --passphrase $PGPPassphrase -o $outfile --decrypt $f
+	#Decrypt_GPG $f $passphrase $working
+	}
+	}
+	
+	Write-Output "`n---------- Processing Files ----------" | Out-File -FilePath $LogFile -Append
+	Copy-Item *.* -destination $destinationfolder -force -verbose 4>> $LogFile
+
+	
+	Write-Output "`n--------- Removing Files from Working Dir ---------"
+	Remove-Item -path $working\*.* -force 4>> $LogFile 
+	
+	Write-Output "`n<---- Script has completed successfully ---->"
+}
+else{
+	
+	Write-Output "`n---------------------------------------"
+	Write-Output "No files to process. No action required"
+	Write-Output "---------------------------------------"
+	Write-Output "End Time:   $TimeEnd" | Out-File -FilePath $LogFile -Append
+
+}
+exit 0
